@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nganya Style – Driver Portal</title>
+<style>
+body { margin: 0; font-family: Poppins,sans-serif; background: #f2f2f2; }
+header { background: #000; color: #fff; padding: 20px; text-align: center; }
+.container { max-width: 500px; margin: auto; padding: 20px; }
+.card { background: #fff; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+input, select { width: 100%; padding: 10px; margin: 8px 0 15px; border-radius: 6px; border: 1px solid #ccc; }
+.btn { width: 100%; padding: 12px; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; font-weight: 600; }
+.primary { background: #0d6efd; color: white; }
+.danger { background: crimson; color: white; }
+.success { background: #28a745; color: white; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+    <h2>Nganya Style – Driver Portal</h2>
+</header>
+
+<div class="container">
+    <!-- CREATE ACCOUNT -->
+    <div id="createAccountSection" class="card">
+        <h3>Create Account</h3>
+        <input id="regName" placeholder="Full Name" />
+        <input id="regPhone" placeholder="Phone Number" />
+        <input id="regPass" placeholder="Password" type="password" />
+        <button class="btn primary" onclick="createAccount()">Create Account</button>
+    </div>
+
+    <!-- APPLICATION FORM -->
+    <div id="applicationSection" class="card hidden">
+        <h3>Driver Application</h3>
+        <input id="vehicleNo" placeholder="Vehicle / Plate Number" />
+        <input id="route" placeholder="Route (e.g. CBD – Rongai)" />
+        <input id="capacityVal" type="number" placeholder="Vehicle Capacity" />
+        <button class="btn primary" onclick="submitApplication()">Submit Application</button>
+    </div>
+
+    <!-- LOGIN -->
+    <div id="loginSection" class="card hidden">
+        <h3>Driver Login</h3>
+        <input id="loginPhone" placeholder="Phone Number" />
+        <input id="loginPass" placeholder="Password" type="password" />
+        <button class="btn primary" onclick="loginDriver()">Login</button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="card hidden">
+        <h3>Driver Dashboard</h3>
+        <p><b>Name:</b> <span id="dName"></span></p>
+        <p><b>Vehicle:</b> <span id="dVehicle"></span></p>
+        <p><b>Route:</b> <span id="dRoute"></span></p>
+        <p><b>Capacity:</b> <span id="dCapacity"></span></p>
+        <p><b>Current Passengers:</b> <span id="dPassengers">0</span></p>
+
+        <button class="btn success" onclick="goOnline()" id="onlineBtn">Go Online</button>
+        <button class="btn danger hidden" onclick="goOffline()" id="offlineBtn">Go Offline</button>
+
+        <h3>Trip Requests</h3>
+        <div id="requests"></div>
+    </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+const API = "http://localhost:5000/api";
+let socket = null;
+let driver = null;
+
+// SHOW/HIDE SECTIONS
+function show(id){
+    ['createAccountSection','applicationSection','loginSection','dashboard']
+    .forEach(x=>document.getElementById(x).classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+}
+
+// CREATE ACCOUNT
+async function createAccount(){
+    const name = document.getElementById('regName').value;
+    const phone = document.getElementById('regPhone').value;
+    const pass = document.getElementById('regPass').value;
+    if(!name||!phone||!pass) return alert("Fill all fields");
+
+    try{
+        const res = await fetch(`${API}/drivers/register`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ name, phone, password: pass })
+        });
+        const data = await res.json();
+        if(!data.success) return alert(data.message);
+        driver = data.driver;
+        show('applicationSection');
+    }catch(err){ console.error(err); alert("Failed to register"); }
+}
+
+// SUBMIT APPLICATION
+async function submitApplication(){
+    const vehicle = document.getElementById('vehicleNo').value;
+    const routeVal = document.getElementById('route').value;
+    const capacity = document.getElementById('capacityVal').value;
+    if(!vehicle||!routeVal||!capacity) return alert("Fill all fields");
+
+    try{
+        const res = await fetch(`${API}/drivers/application`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ driverId: driver._id, vehicle, route: routeVal, capacity })
+        });
+        const data = await res.json();
+        if(!data.success) return alert(data.message);
+
+        alert("Application submitted for approval. You can now login once approved.");
+        show('loginSection'); // go directly to login
+    }catch(err){ console.error(err); alert("Failed to submit application"); }
+}
+
+// LOGIN
+async function loginDriver(){
+    const phone = document.getElementById('loginPhone').value;
+    const pass = document.getElementById('loginPass').value;
+    if(!phone||!pass) return alert("Fill all fields");
+
+    try{
+        const res = await fetch(`${API}/drivers/login`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({ phone, password:pass })
+        });
+        const data = await res.json();
+        if(!data.success) return alert(data.message);
+        driver = data.driver;
+        loadDashboard();
+    }catch(err){ console.error(err); alert("Login failed"); }
+}
+
+// DASHBOARD
+function loadDashboard(){
+    document.getElementById('dName').innerText = driver.name;
+    document.getElementById('dVehicle').innerText = driver.vehicle || '';
+    document.getElementById('dRoute').innerText = driver.route || '';
+    document.getElementById('dCapacity').innerText = driver.capacity || '';
+    show('dashboard');
+
+    socket = io("http://localhost:5000");
+    socket.emit('joinDriver', driver._id);
+
+    socket.on('newBooking', data=>{
+        const div = document.createElement('div');
+        div.innerHTML = `Passenger ${data.passengerId} booked from ${data.pickup} → ${data.dropoff} 
+        <button onclick="acceptBooking('${data.bookingId}')">Accept</button>`;
+        document.getElementById('requests').appendChild(div);
+    });
+}
+
+// ONLINE/OFFLINE
+async function goOnline(){
+    document.getElementById('onlineBtn').classList.add('hidden');
+    document.getElementById('offlineBtn').classList.remove('hidden');
+    const res = await fetch(`${API}/drivers/toggleOnline`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ driverId: driver._id, isOnline:true })
+    });
+    console.log(await res.json());
+}
+
+async function goOffline(){
+    document.getElementById('offlineBtn').classList.add('hidden');
+    document.getElementById('onlineBtn').classList.remove('hidden');
+    const res = await fetch(`${API}/drivers/toggleOnline`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ driverId: driver._id, isOnline:false })
+    });
+    console.log(await res.json());
+}
+
+// ACCEPT BOOKING
+async function acceptBooking(bookingId){
+    const res = await fetch(`${API}/drivers/bookings/accept`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ driverId: driver._id, bookingId })
+    });
+    const data = await res.json();
+    if(data.success) alert("Booking accepted");
+}
+
+// ALWAYS START AT REGISTRATION
+show('createAccountSection');
+
+</script>
+</body>
+</html>

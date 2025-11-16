@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Nganya – Book a Ride</title>
+<style>
+body { margin:0; font-family: Poppins,sans-serif; background:#f2f2f2; }
+header { background:#000; color:#fff; padding:20px; text-align:center; }
+.container { max-width:500px; margin:auto; padding:20px; }
+.card { background:#fff; padding:20px; border-radius:10px; margin-bottom:20px; box-shadow:0 4px 10px rgba(0,0,0,0.1); }
+.inputField { width:100%; padding:10px; margin:8px 0 15px; border-radius:6px; border:1px solid #ccc; }
+.btn { width:100%; padding:12px; border:none; border-radius:6px; cursor:pointer; font-size:16px; font-weight:600; }
+.primary { background:#0d6efd; color:white; }
+.driverCard { background:#eaf3ff; padding:15px; border-radius:8px; margin-top:10px; }
+.hidden { display:none; }
+#map { width:100%; height:300px; border-radius:12px; margin-top:10px; }
+</style>
+</head>
+<body>
+<header>
+    <h2>Nganya – Book a Ride</h2>
+</header>
+
+<div class="container">
+
+<!-- LOGIN / REGISTER CARD -->
+<div id="loginCard" class="card">
+    <h3>Login or Register</h3>
+    <input id="email" class="inputField" placeholder="Email" type="email"/>
+    <input id="password" class="inputField" placeholder="Password" type="password"/>
+    <input id="name" class="inputField" placeholder="Full Name (new users)"/>
+    <input id="phone" class="inputField" placeholder="Phone Number"/>
+    <button class="btn primary" onclick="loginPassenger()">Login / Register</button>
+</div>
+
+<!-- DASHBOARD CARD -->
+<div id="dashCard" class="card hidden">
+    <h3>Request a Ride</h3>
+    <input id="pickup" class="inputField" placeholder="Pickup Location"/>
+    <input id="dropoff" class="inputField" placeholder="Dropoff Location"/>
+    <button class="btn primary" onclick="findDrivers()">Find Nganyas</button>
+
+    <div id="driversSection" class="hidden">
+        <h3>Available Drivers</h3>
+        <div id="driversList"></div>
+    </div>
+
+    <h3>Your Live Location</h3>
+    <div id="map"></div>
+
+    <h3>Ride Status</h3>
+    <div id="statusArea"></div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script>
+const API = "http://localhost:5000/api";
+let socket = io("http://localhost:5000");
+let passengerId = null;
+let map = null;
+let userMarker = null;
+let driverMarker = null;
+
+// -------------------- VIEW SWITCH --------------------
+function showCard(id){
+    ["loginCard","dashCard"].forEach(x => document.getElementById(x).classList.add("hidden"));
+    document.getElementById(id).classList.remove("hidden");
+}
+
+// -------------------- LOGIN / REGISTER --------------------
+async function loginPassenger(){
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const name = document.getElementById("name").value.trim();
+    const phone = document.getElementById("phone").value.trim();
+
+    if(!email || !password) return alert("Enter email & password");
+
+    navigator.geolocation.getCurrentPosition(async pos=>{
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        // LOGIN
+        let res = await fetch(`${API}/passengers/login`, {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ email, password })
+        });
+        let data = await res.json();
+
+        // IF NOT FOUND, REGISTER
+        if(!data.success){
+            res = await fetch(`${API}/passengers/register`, {
+                method:"POST",
+                headers:{"Content-Type":"application/json"},
+                body: JSON.stringify({ email, password, name, phone })
+            });
+            data = await res.json();
+        }
+
+        if(!data.success) return alert(data.message);
+
+        passengerId = data.passengerId;
+        loadDashboard();
+    }, err=>alert("Location required for registration"));
+}
+
+// -------------------- DASHBOARD --------------------
+function loadDashboard(){
+    showCard("dashCard");
+    socket.emit("joinPassenger", passengerId);
+    initMap();
+    startGPS();
+
+    // Listen for live online drivers
+    socket.on("driversOnlineList", drivers=>{
+        document.getElementById("driversSection").classList.remove("hidden");
+        const driversList = document.getElementById("driversList");
+        driversList.innerHTML = "";
+        if(drivers.length === 0) driversList.innerHTML = "<p>No drivers online.</p>";
+        drivers.forEach(d=>{
+            const card = document.createElement("div");
+            card.className = "driverCard";
+            card.innerHTML = `
+                <p><b>${d.name}</b></p>
+                <p>Vehicle: ${d.vehicle || 'N/A'}</p>
+                <p>Route: ${d.route || 'N/A'}</p>
+                <p>Seats: ${d.capacity || '-'}</p>
+                <button class="btn primary" onclick="requestRide('${d._id}')">Book Ride</button>
+            `;
+            driversList.appendChild(card);
+        });
+    });
+
+    // Listen for ride acceptance
+    socket.on("tripAccepted", data=>{
+        updateStatus("Ride accepted by driver "+data.driver.name);
+        alert("Ride Accepted!");
+    });
+}
+
+// -------------------- FIND DRIVERS --------------------
+function findDrivers(){
+    socket.emit("getOnlineDrivers");
+}
+
+// -------------------- REQUEST RIDE --------------------
+async function requestRide(driverId){
+    const pickup = document.getElementById("pickup").value.trim();
+    const dropoff = document.getElementById("dropoff").value.trim();
+    if(!pickup || !dropoff) return alert("Enter pickup and dropoff");
+
+    try{
+        const res = await fetch(`${API}/passengers/bookings/request`, {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ passengerId, driverId, pickup, dropoff })
+        });
+        const data = await res.json();
+        if(!data.success) return alert(data.message);
+        updateStatus("Waiting for driver to accept...");
+    }catch(err){
+        console.error(err);
+        alert("Failed to send ride request.");
+    }
+}
+
+// -------------------- UPDATE STATUS --------------------
+function updateStatus(msg){
+    const statusArea = document.getElementById("statusArea");
+    statusArea.innerHTML = `<div>${msg}</div>`;
+}
+
+// -------------------- MAP --------------------
+function initMap(){
+    map = L.map('map').setView([0,0],15);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19}).addTo(map);
+}
+
+function startGPS(){
+    if(!navigator.geolocation) return;
+    navigator.geolocation.watchPosition(pos=>{
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        map.setView([lat,lng],16);
+        if(userMarker) userMarker.setLatLng([lat,lng]);
+        else userMarker = L.marker([lat,lng]).addTo(map).bindPopup("You are here");
+        socket.emit("passengerGPS",{ passengerId, lat, lng });
+    }, err=>console.error(err), { enableHighAccuracy:true, maximumAge:0, timeout:5000 });
+}
+</script>
+</body>
+</html>

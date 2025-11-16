@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nganya Style – Admin Dashboard</title>
+<style>
+body { margin:0;font-family:Poppins,sans-serif;background:#f2f2f2 }
+header { background:#000;color:#fff;padding:20px;text-align:center }
+.container { max-width:900px;margin:auto;padding:20px }
+.card { background:#fff;padding:20px;border-radius:10px;margin-bottom:20px;box-shadow:0 4px 10px rgba(0,0,0,0.1) }
+.btn { padding:10px 15px;border:none;border-radius:6px;cursor:pointer;font-size:15px;font-weight:600 }
+.approve { background:#28a745;color:#fff }
+.reject { background:crimson;color:#fff }
+.driver-card { background:#eef4ff;padding:15px;border-radius:10px;margin-bottom:15px;border-left:5px solid #0d6efd }
+.approved { border-left:5px solid #28a745;background:#ebffef }
+</style>
+</head>
+<body>
+<header><h2>Nganya Style – Admin Dashboard</h2></header>
+<div class="container">
+<h2>Pending Driver Applications</h2>
+<div id="pendingList"></div>
+
+<h2>Approved Drivers</h2>
+<div id="approvedList"></div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+const API = "http://localhost:5000/api";
+let socket = io("http://localhost:5000");
+
+// Load drivers from backend
+async function loadDrivers() {
+    try {
+        const res = await fetch(`${API}/drivers/all`);
+        const drivers = await res.json();
+
+        const pendingList = document.getElementById("pendingList");
+        const approvedList = document.getElementById("approvedList");
+        pendingList.innerHTML = "";
+        approvedList.innerHTML = "";
+
+        drivers.forEach(d => {
+            const card = document.createElement("div");
+            card.className = "driver-card";
+            card.innerHTML = `
+                <strong>Name:</strong> ${d.name}<br>
+                <strong>Phone:</strong> ${d.phone}<br>
+                <strong>Vehicle:</strong> ${d.vehicle || "-"}<br>
+                <strong>Route:</strong> ${d.route || "-"}<br>
+                <strong>Capacity:</strong> ${d.capacity || "-"}<br>
+                <strong>Status:</strong> ${d.status}<br>
+            `;
+
+            if(d.status === "pending"){
+                const btnApprove = document.createElement("button");
+                btnApprove.textContent = "Approve";
+                btnApprove.className = "btn approve";
+                btnApprove.onclick = () => approveDriver(d._id);
+
+                const btnReject = document.createElement("button");
+                btnReject.textContent = "Reject";
+                btnReject.className = "btn reject";
+                btnReject.style.marginLeft = "5px";
+                btnReject.onclick = () => rejectDriver(d._id);
+
+                card.appendChild(btnApprove);
+                card.appendChild(btnReject);
+                pendingList.appendChild(card);
+            } else {
+                card.classList.add("approved");
+                approvedList.appendChild(card);
+            }
+        });
+    } catch (err) {
+        console.error("Error loading drivers:", err);
+    }
+}
+
+// Approve driver
+async function approveDriver(driverId){
+    try {
+        const res = await fetch(`${API}/drivers/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ driverId })
+        });
+        const data = await res.json();
+        if(data.success){
+            alert("Driver Approved!");
+            socket.emit("driverApproved", driverId);
+            loadDrivers();
+        }
+    } catch(err) { console.error(err); }
+}
+
+// Reject driver
+async function rejectDriver(driverId){
+    try {
+        const res = await fetch(`${API}/drivers/reject`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ driverId })
+        });
+        const data = await res.json();
+        if(data.success){
+            alert("Driver Rejected!");
+            socket.emit("driverRejected", driverId);
+            loadDrivers();
+        }
+    } catch(err) { console.error(err); }
+}
+
+// Listen for real-time updates (optional if multiple admins)
+socket.on("updateDrivers", () => loadDrivers());
+
+// Initial load
+loadDrivers();
+</script>
+</body>
+</html>
