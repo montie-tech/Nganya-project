@@ -68,7 +68,7 @@ input, select { width: 100%; padding: 10px; margin: 8px 0 15px; border-radius: 6
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script>
-const API = "http://localhost:5000/api";
+const API = "https://nganya-project.onrender.com/api";
 let socket = null;
 let driver = null;
 
@@ -147,7 +147,7 @@ function loadDashboard(){
     document.getElementById('dCapacity').innerText = driver.capacity || '';
     show('dashboard');
 
-    socket = io("http://localhost:5000");
+    socket = io("https://nganya-project.onrender.com");
     socket.emit('joinDriver', driver._id);
 
     socket.on('newBooking', data=>{
