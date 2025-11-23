@@ -15,6 +15,9 @@ input, select { width: 100%; padding: 10px; margin: 8px 0 15px; border-radius: 6
 .danger { background: crimson; color: white; }
 .success { background: #28a745; color: white; }
 .hidden { display: none; }
+.link { text-align: center; margin-top: 15px; color: #666; }
+.link a { color: #0d6efd; text-decoration: none; font-weight: 500; }
+.link a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
@@ -23,13 +26,27 @@ input, select { width: 100%; padding: 10px; margin: 8px 0 15px; border-radius: 6
 </header>
 
 <div class="container">
+    <!-- LOGIN SECTION (NOW FIRST) -->
+    <div id="loginSection" class="card">
+        <h3>Driver Login</h3>
+        <input id="loginPhone" placeholder="Phone Number" />
+        <input id="loginPass" placeholder="Password" type="password" />
+        <button class="btn primary" onclick="loginDriver()">Login</button>
+        <div class="link">
+            Don't have an account? <a href="#" onclick="showCreateAccount()">Create one</a>
+        </div>
+    </div>
+
     <!-- CREATE ACCOUNT -->
-    <div id="createAccountSection" class="card">
+    <div id="createAccountSection" class="card hidden">
         <h3>Create Account</h3>
         <input id="regName" placeholder="Full Name" />
         <input id="regPhone" placeholder="Phone Number" />
         <input id="regPass" placeholder="Password" type="password" />
         <button class="btn primary" onclick="createAccount()">Create Account</button>
+        <div class="link">
+            Already have an account? <a href="#" onclick="showLogin()">Sign In</a>
+        </div>
     </div>
 
     <!-- APPLICATION FORM -->
@@ -39,14 +56,6 @@ input, select { width: 100%; padding: 10px; margin: 8px 0 15px; border-radius: 6
         <input id="route" placeholder="Route (e.g. CBD – Rongai)" />
         <input id="capacityVal" type="number" placeholder="Vehicle Capacity" />
         <button class="btn primary" onclick="submitApplication()">Submit Application</button>
-    </div>
-
-    <!-- LOGIN -->
-    <div id="loginSection" class="card hidden">
-        <h3>Driver Login</h3>
-        <input id="loginPhone" placeholder="Phone Number" />
-        <input id="loginPass" placeholder="Password" type="password" />
-        <button class="btn primary" onclick="loginDriver()">Login</button>
     </div>
 
     <!-- DASHBOARD -->
@@ -77,6 +86,15 @@ function show(id){
     ['createAccountSection','applicationSection','loginSection','dashboard']
     .forEach(x=>document.getElementById(x).classList.add('hidden'));
     document.getElementById(id).classList.remove('hidden');
+}
+
+// NAVIGATION FUNCTIONS
+function showCreateAccount() {
+    show('createAccountSection');
+}
+
+function showLogin() {
+    show('loginSection');
 }
 
 // CREATE ACCOUNT
@@ -192,8 +210,8 @@ async function acceptBooking(bookingId){
     if(data.success) alert("Booking accepted");
 }
 
-// ALWAYS START AT REGISTRATION
-show('createAccountSection');
+// START WITH LOGIN SCREEN
+show('loginSection');
 
 </script>
 </body>
